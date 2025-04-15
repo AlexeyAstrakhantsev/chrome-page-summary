@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>AI Page Summarizer</title>
+  <style>
+    body {
+      width: 400px;
+      padding: 16px;
+      font-family: Arial, sans-serif;
+    }
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    button {
+      background-color: #4285f4;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover {
+      background-color: #3367d6;
+    }
+    #summary {
+      margin-top: 16px;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      min-height: 100px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .loading {
+      display: none;
+      text-align: center;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <button id="summarizeBtn">Summarize Page</button>
+    <div class="loading" id="loading">Generating summary...</div>
+    <div id="summary"></div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
