@@ -2,51 +2,275 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>AI Page Summarizer</title>
+  <title>Summary Page</title>
   <style>
+    :root {
+      --primary-color: #4285f4;
+      --primary-hover: #3367d6;
+      --background: #ffffff;
+      --text: #333333;
+      --border: #e0e0e0;
+      --shadow: rgba(0, 0, 0, 0.1);
+    }
     body {
       width: 400px;
       padding: 16px;
-      font-family: Arial, sans-serif;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      margin: 0;
+      color: var(--text);
+      background: var(--background);
     }
     .container {
       display: flex;
       flex-direction: column;
       gap: 16px;
     }
-    button {
-      background-color: #4285f4;
-      color: white;
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .header-icon {
+      vertical-align: middle;
+    }
+    .settings-toggle {
+      background: none;
       border: none;
-      padding: 8px 16px;
-      border-radius: 4px;
+      color: var(--primary-color);
       cursor: pointer;
+      padding: 8px;
+      border-radius: 4px;
+      transition: background-color 0.2s;
+    }
+    .settings-toggle:hover {
+      background-color: rgba(66, 133, 244, 0.1);
+    }
+    .settings-panel {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+      border: 1px solid var(--border);
+      transition: all 0.3s ease;
+    }
+    .settings-panel.hidden {
+      display: none;
+    }
+    .model-selector {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    select {
+      padding: 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      flex-grow: 1;
+      background: white;
       font-size: 14px;
     }
-    button:hover {
-      background-color: #3367d6;
+    .detail-buttons {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .detail-button {
+      flex: 1;
+      padding: 8px;
+      border: 1px solid var(--primary-color);
+      background: transparent;
+      color: var(--primary-color);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 14px;
+    }
+    .detail-button:hover {
+      background: rgba(66, 133, 244, 0.1);
+    }
+    .detail-button.active {
+      background: var(--primary-color);
+      color: white;
+    }
+    button#summarizeBtn {
+      background-color: var(--primary-color);
+      color: white;
+      border: none;
+      padding: 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: background-color 0.2s;
+      width: 100%;
+      box-shadow: 0 2px 4px var(--shadow);
+    }
+    button#summarizeBtn:hover {
+      background-color: var(--primary-hover);
+    }
+    button#summarizeBtn:disabled {
+      background-color: var(--border);
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+    .summary-row {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
     }
     #summary {
-      margin-top: 16px;
-      padding: 12px;
-      border: 1px solid #ddd;
-      border-radius: 4px;
+      flex: 1;
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
       min-height: 100px;
       max-height: 300px;
       overflow-y: auto;
+      white-space: pre-wrap;
+      line-height: 1.6;
+      background: white;
+      font-size: 14px;
+      transition: box-shadow 0.2s;
+    }
+    .copy-btn {
+      background: var(--primary-color);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 10px;
+      cursor: pointer;
+      font-size: 16px;
+      margin-top: 4px;
+      display: flex;
+      align-items: center;
+      transition: background 0.2s;
+      box-shadow: 0 2px 4px var(--shadow);
+    }
+    .copy-btn:hover {
+      background: var(--primary-hover);
+    }
+    .copy-btn .material-icons {
+      font-size: 18px;
+      margin-right: 4px;
+    }
+    .copied-label {
+      color: #388e3c;
+      font-size: 12px;
+      margin-left: 4px;
+      font-weight: 500;
+      vertical-align: middle;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .copied-label.visible {
+      opacity: 1;
+    }
+    .placeholder-summary {
+      color: #888;
+      text-align: center;
+      padding: 28px 8px 28px 8px;
+      font-size: 15px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      height: 100px;
+    }
+    .placeholder-summary .material-icons {
+      font-size: 32px;
+      color: #bdbdbd;
     }
     .loading {
       display: none;
       text-align: center;
-      color: #666;
+      color: var(--text);
+      padding: 20px 0;
+    }
+    .loading-animation {
+      display: inline-block;
+      width: 24px;
+      height: 24px;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid var(--primary-color);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-right: 12px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .status-message {
+      font-size: 14px;
+      color: var(--text);
+      margin-top: 8px;
+      text-align: center;
+    }
+    .material-icons {
+      font-family: 'Material Icons';
+      font-weight: normal;
+      font-style: normal;
+      font-size: 24px;
+      line-height: 1;
+      letter-spacing: normal;
+      text-transform: none;
+      display: inline-block;
+      white-space: nowrap;
+      word-wrap: normal;
+      direction: ltr;
+      -webkit-font-smoothing: antialiased;
     }
   </style>
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
 </head>
 <body>
   <div class="container">
-    <button id="summarizeBtn">Summarize Page</button>
-    <div class="loading" id="loading">Generating summary...</div>
-    <div id="summary"></div>
+    <div class="header">
+      <span class="header-icon material-icons" style="font-size:24px;color:#4285f4;margin-right:6px;vertical-align:middle;">description</span>
+      <h2 style="margin: 0; display:inline; vertical-align:middle; font-weight:600; font-size:20px;">Summary Page</h2>
+      <button class="settings-toggle" id="settingsToggle" title="Настройки">
+        <span class="material-icons">settings</span>
+      </button>
+    </div>
+
+    <div class="settings-panel hidden" id="settingsPanel">
+      <div class="model-selector">
+        <label for="modelSelect">AI Model:</label>
+        <select id="modelSelect" title="Выберите модель ИИ"></select>
+      </div>
+      <div class="api-key-field" style="margin-bottom: 10px;">
+        <label for="apiKeyInput" style="display:block;margin-bottom:4px;">API-ключ OpenRouter:</label>
+        <input type="password" id="apiKeyInput" placeholder="sk-..." style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);font-size:14px;" title="Ваш персональный OpenRouter API-ключ" autocomplete="off" />
+        <span id="apiKeySaved" style="color:#388e3c;font-size:12px;display:none;">Сохранено!</span>
+      </div>
+      <div class="detail-buttons">
+        <button class="detail-button active" data-level="brief" title="Краткое саммари (1-2 абзаца)">Кратко</button>
+        <button class="detail-button" data-level="detailed" title="Подробное саммари (3-4 абзаца)">Подробно</button>
+        <button class="detail-button" data-level="very-detailed" title="Детальное саммари (5-6 абзацев)">Детально</button>
+      </div>
+    </div>
+
+    <button id="summarizeBtn" title="Сгенерировать краткое содержание">Создать краткое содержание</button>
+    
+    <div class="loading" id="loading">
+      <div class="loading-animation"></div>
+      <div class="status-message" id="statusMessage">Анализируем страницу...</div>
+    </div>
+    
+    <div class="summary-row">
+      <div id="summary"></div>
+      <div id="placeholderSummary" class="placeholder-summary" style="display:none;">
+        <span class="material-icons">info</span>
+        <span>Нажмите кнопку для создания краткого содержания</span>
+      </div>
+      <button id="copyBtn" class="copy-btn" style="margin-top:12px; width:100%" title="Скопировать в буфер обмена">
+        <span class="material-icons">content_copy</span> Копировать
+        <span class="copied-label" id="copiedLabel">Скопировано!</span>
+      </button>
+    </div>
   </div>
   <script src="popup.js"></script>
 </body>
