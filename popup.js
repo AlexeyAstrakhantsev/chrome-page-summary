@@ -1,4 +1,9 @@
 document.addEventListener('DOMContentLoaded', async function() {
+  window.progressBar = document.getElementById('progressBar');
+  window.progressInner = document.getElementById('progressInner');
+  window.currentProgress = 0;
+  window.progressInterval = null;
+
   const summarizeBtn = document.getElementById('summarizeBtn');
   const summaryDiv = document.getElementById('summary');
   const loadingDiv = document.getElementById('loading');
@@ -8,6 +13,8 @@ document.addEventListener('DOMContentLoaded', async function() {
   const settingsToggle = document.getElementById('settingsToggle');
   const detailButtons = document.querySelectorAll('.detail-button');
   const copyBtn = document.getElementById('copyBtn');
+  const rephraseBtn = document.getElementById('rephraseBtn');
+  const summaryActions = document.getElementById('summaryActions');
   const copiedLabel = document.getElementById('copiedLabel');
   const placeholderSummary = document.getElementById('placeholderSummary');
   const apiKeyInput = document.getElementById('apiKeyInput');
@@ -131,8 +138,14 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
   }
 
+  let hasTriedGenerate = false;
+
   summarizeBtn.addEventListener('click', async () => {
+    hasTriedGenerate = true;
+    showPlaceholder(false); // скрываем placeholder мгновенно при клике
     try {
+      // Не скрываем placeholder здесь, это будет сделано автоматически через updateSummaryUI()
+      summaryDiv.innerHTML = ''; // очищаем только при генерации нового саммари
       startLoadingState();
       updateStatus('Анализируем содержимое...');
       
@@ -185,7 +198,8 @@ document.addEventListener('DOMContentLoaded', async function() {
       }
 
       const pageData = results[0].result;
-
+      // Сохраняем pageData глобально для перефразирования
+      window._lastPageData = pageData;
       // Send message to background script to start generation
       updateStatus('Генерируем краткое содержание...');
       let response;
@@ -232,15 +246,41 @@ document.addEventListener('DOMContentLoaded', async function() {
   });
 
   function startLoadingState() {
+    if (summaryActions) summaryActions.style.display = 'none';
+    // Показываем и анимируем прогресс-бар
+    if (window.progressBar && window.progressInner) {
+      window.currentProgress = 0;
+      window.progressInner.style.width = '0%';
+      window.progressBar.style.display = '';
+      clearInterval(window.progressInterval);
+      window.progressInterval = setInterval(() => {
+        if (window.currentProgress < 90) {
+          window.currentProgress += Math.random() * 2 + 0.5;
+          if (window.currentProgress > 90) window.currentProgress = 90;
+          window.progressInner.style.width = window.currentProgress + '%';
+        }
+      }, 120);
+    }
+
     summarizeBtn.disabled = true;
     loadingDiv.style.display = 'block';
-    summaryDiv.innerHTML = '';
+
     settingsPanel.classList.add('hidden');
     settingsToggle.disabled = true;
     settingsToggle.querySelector('.material-icons').textContent = 'settings';
   }
 
   function stopLoadingState() {
+    // Доводим прогресс-бар до 100% и скрываем
+    if (window.progressBar && window.progressInner) {
+      clearInterval(window.progressInterval);
+      window.progressInner.style.width = '100%';
+      setTimeout(() => {
+        window.progressBar.style.display = 'none';
+        window.progressInner.style.width = '0%';
+      }, 300);
+    }
+
     summarizeBtn.disabled = false;
     loadingDiv.style.display = 'none';
     settingsToggle.disabled = false;
@@ -253,11 +293,56 @@ document.addEventListener('DOMContentLoaded', async function() {
   }
 
   function showCopyButton(show) {
-    copyBtn.style.display = show ? '' : 'none';
+    if (summaryActions) summaryActions.style.display = show ? '' : 'none';
+    if (show && rephraseBtn && !rephraseBtn._handlerAttached) {
+      rephraseBtn.addEventListener('click', async () => {
+        try {
+          startLoadingState();
+          updateStatus('Генерируем альтернативный вариант...');
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (!tab) throw new Error('Не удалось получить текущую вкладку');
+          // Получаем pageData из последнего сгенерированного саммари
+        // Отправляем только текст текущего саммари
+        const summaryText = summaryDiv.textContent;
+        const response = await chrome.runtime.sendMessage({
+            action: 'rephraseSummary',
+            tabId: tab.id,
+            data: {
+              model: modelSelect.value,
+              detailLevel: selectedDetailLevel,
+              summaryText
+            }
+          });
+           if (response && response.summary) {
+             // Полностью заменяем текст саммари новым вариантом
+             summaryDiv.textContent = response.summary;
+             showCopyButton(true);
+             showSummaryBlock(true);
+             showPlaceholder(false);
+             updateStatus('Альтернативный вариант готов!');
+           } else {
+             let errMsg = 'Ошибка: не удалось получить альтернативный вариант.';
+             if (response && response.error) {
+               errMsg += '\n' + response.error;
+             }
+             summaryDiv.textContent = errMsg;
+             updateStatus('Ошибка при генерации.');
+           }
+        } catch (err) {
+          summaryDiv.textContent = 'Ошибка: ' + err.message;
+          updateStatus('Ошибка при генерации.');
+        } finally {
+          stopLoadingState();
+        }
+      });
+      rephraseBtn._handlerAttached = true;
+    }
   }
+
   function showPlaceholder(show) {
     placeholderSummary.style.display = show ? '' : 'none';
   }
+
   function showSummaryBlock(show) {
     summaryDiv.style.display = show ? '' : 'none';
   }
@@ -275,7 +360,8 @@ document.addEventListener('DOMContentLoaded', async function() {
     const hasSummary = summaryDiv.innerText.trim().length > 0;
     showCopyButton(hasSummary);
     showSummaryBlock(hasSummary);
-    showPlaceholder(!hasSummary);
+    // Показываем placeholder только если пользователь ещё не пытался сгенерировать summary
+    showPlaceholder(!hasSummary && !hasTriedGenerate);
   }
 
   // --- Удаляем переопределение innerHTML ---

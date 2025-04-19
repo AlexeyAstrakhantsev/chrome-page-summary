@@ -12,6 +12,82 @@
       --border: #e0e0e0;
       --shadow: rgba(0, 0, 0, 0.1);
     }
+    @media (prefers-color-scheme: dark) {
+  .progress-bar {
+    background: #33363d;
+  }
+  .progress {
+    background: var(--primary-color);
+  }
+      :root {
+        --primary-color: #8ab4f8;
+        --primary-hover: #5a7bbd;
+        --background: #181a20;
+        --text: #e8eaed;
+        --border: #33363d;
+        --shadow: rgba(0, 0, 0, 0.6);
+      }
+      body {
+        background: var(--background);
+        color: var(--text);
+      }
+      .settings-panel {
+        background: #23242a !important;
+        color: var(--text) !important;
+        border: 1px solid var(--border) !important;
+      }
+      .settings-panel input,
+      .settings-panel select {
+        background: #23242a;
+        color: var(--text);
+        border: 1px solid var(--border);
+        box-shadow: none;
+      }
+      .settings-panel input::placeholder {
+        color: #888;
+        opacity: 1;
+      }
+      .settings-panel label {
+        color: var(--text);
+      }
+      #summary {
+        background: #23242a;
+        border: 1px solid var(--border);
+        color: var(--text);
+      }
+      select {
+        background: #23242a;
+        color: var(--text);
+        border: 1px solid var(--border);
+      }
+      .detail-button {
+        background: transparent;
+        color: var(--primary-color);
+        border: 1px solid var(--primary-color);
+      }
+      .detail-button.active {
+        background: var(--primary-color);
+        color: #181a20;
+      }
+      .copy-btn {
+        background: var(--primary-color);
+        color: #181a20;
+      }
+      .copy-btn:hover {
+        background: var(--primary-hover);
+      }
+      .placeholder-summary {
+        color: #aaa;
+        background: #23242a;
+      }
+      .loading-animation {
+        border: 3px solid #33363d;
+        border-top: 3px solid var(--primary-color);
+      }
+      .placeholder-summary .material-icons {
+        color: #888;
+      }
+    }
     body {
       width: 400px;
       padding: 16px;
@@ -121,7 +197,8 @@
       gap: 8px;
     }
     #summary {
-      flex: 1;
+      min-width: 0;
+      flex: 1 1 auto;
       padding: 16px;
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -130,7 +207,7 @@
       overflow-y: auto;
       white-space: pre-wrap;
       line-height: 1.6;
-      background: white;
+      background: var(--background);
       font-size: 14px;
       transition: box-shadow 0.2s;
     }
@@ -148,7 +225,22 @@
       transition: background 0.2s;
       box-shadow: 0 2px 4px var(--shadow);
     }
-    .copy-btn:hover {
+    .rephrase-btn {
+      background: var(--primary-color);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 10px;
+      cursor: pointer;
+      font-size: 16px;
+      margin-top: 4px;
+      margin-left: 8px;
+      display: flex;
+      align-items: center;
+      transition: background 0.2s;
+      box-shadow: 0 2px 4px var(--shadow);
+    }
+    .copy-btn:hover, .rephrase-btn:hover {
       background: var(--primary-hover);
     }
     .copy-btn .material-icons {
@@ -209,6 +301,21 @@
       margin-top: 8px;
       text-align: center;
     }
+    .progress-bar {
+      width: 100%;
+      height: 6px;
+      background: var(--border);
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 12px 0 0 0;
+      transition: background 0.2s;
+    }
+    .progress {
+      height: 100%;
+      width: 0%;
+      background: var(--primary-color);
+      transition: width 0.4s cubic-bezier(.4,1,.7,1);
+    }
     .material-icons {
       font-family: 'Material Icons';
       font-weight: normal;
@@ -222,6 +329,14 @@
       word-wrap: normal;
       direction: ltr;
       -webkit-font-smoothing: antialiased;
+    }
+    .summary-actions {
+      display: flex;
+      flex-direction: row;
+      gap: 8px;
+      justify-content: flex-end;
+      margin-top: 8px;
+      align-self: stretch;
     }
   </style>
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
@@ -262,14 +377,18 @@
     
     <div class="summary-row">
       <div id="summary"></div>
+      <div class="progress-bar" id="progressBar" style="display:none;">
+        <div class="progress" id="progressInner"></div>
+      </div>
       <div id="placeholderSummary" class="placeholder-summary" style="display:none;">
         <span class="material-icons">info</span>
         <span>Нажмите кнопку для создания краткого содержания</span>
       </div>
-      <button id="copyBtn" class="copy-btn" style="margin-top:12px; width:100%" title="Скопировать в буфер обмена">
-        <span class="material-icons">content_copy</span> Копировать
+      <div class="summary-actions" id="summaryActions">
+        <button class="copy-btn" id="copyBtn" title="Скопировать"><span class="material-icons">content_copy</span>Копировать</button>
+        <button class="copy-btn" id="rephraseBtn" title="Перефразировать"><span class="material-icons">sync</span>Перефразировать</button>
         <span class="copied-label" id="copiedLabel">Скопировано!</span>
-      </button>
+      </div>
     </div>
   </div>
   <script src="popup.js"></script>

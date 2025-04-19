@@ -69,6 +69,16 @@ const CONFIG = {
 // Store ongoing summaries
 let activeSummaryRequests = new Map();
 
+// --- Открытие страницы после установки/обновления расширения ---
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason === 'install') {
+    chrome.tabs.create({ url: 'https://summary-page.online/welcome' }); // <-- замените на ваш URL с инструкцией
+  } else if (details.reason === 'update') {
+    chrome.tabs.create({ url: 'https://summary-page.online/whatsnew' }); // <-- замените на страницу с новинками/изменениями
+  }
+});
+
+
 // --- Получение API-ключа из chrome.storage.local ---
 async function getApiKey() {
   return new Promise(resolve => {
@@ -80,6 +90,36 @@ async function getApiKey() {
 
 // Handle messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'rephraseSummary') {
+    // Перефразируем только текст уже готового саммари!
+    const summaryText = request.data && request.data.summaryText;
+    if (!summaryText) {
+      sendResponse({ error: 'Нет текста для перефразирования' });
+      return true;
+    }
+    const selectedModel = request.data.model;
+    // Строим prompt для LLM
+    const prompt = `Перефразируй следующий текст на русском языке, измени структуру и формулировки, сохрани смысл:\n\n${summaryText}`;
+    generateSummary({
+      prompt,
+      selectedModel,
+      detailLevel: null,
+      rephrase: true
+    })
+      .then(summary => {
+        console.log('Перефразированный summary:', summary);
+        if (!summary || typeof summary !== 'string' || summary.trim() === '') {
+          sendResponse({ error: 'Модель не вернула текст перефразированного саммари.' });
+        } else {
+          sendResponse({ summary });
+        }
+      })
+      .catch(error => {
+        console.error('Ошибка при перефразировании:', error);
+        sendResponse({ error: error.message || String(error) });
+      });
+    return true;
+  }
   if (request.action === 'getConfig') {
     sendResponse(CONFIG);
     return true;
@@ -135,23 +175,35 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 async function generateSummary(requestData) {
-  const { pageData, selectedModel = CONFIG.DEFAULT_MODEL, detailLevel = 'detailed' } = requestData;
-
-  if (!pageData || !pageData.text) {
+  if (!requestData || (typeof requestData.prompt !== 'string' && !requestData.pageData)) {
     throw new Error('Некорректные данные страницы');
   }
 
-  const detailConfig = CONFIG.DETAIL_LEVELS[detailLevel];
-  if (!detailConfig) {
-    throw new Error('Некорректный уровень детализации: ' + detailLevel);
+  // Корректно определяем selectedModel
+  const selectedModel = requestData.selectedModel || requestData.model || CONFIG.DEFAULT_MODEL;
+
+  let prompt;
+  let systemPrompt;
+  if (typeof requestData.prompt === 'string') {
+    // Перефразирование: используем только prompt
+    prompt = requestData.prompt;
+    systemPrompt = '';
+  } else {
+    // Генерация саммари: нужны pageData и detailLevel
+    const detailLevel = requestData.detailLevel;
+    const detailConfig = CONFIG.DETAIL_LEVELS[detailLevel];
+    if (!detailConfig) {
+      throw new Error('Некорректный уровень детализации: ' + detailLevel);
+    }
+    systemPrompt = requestData.detailPromptOverride || detailConfig.systemPrompt;
+    const pageData = requestData.pageData;
+    prompt = `Создай краткое содержание для следующей веб-страницы:\nЗаголовок: ${pageData.title || 'Без заголовка'}\nURL: ${pageData.url || 'Нет URL'}\nОписание: ${pageData.description || 'Нет описания'}\n\nСодержание:\n${pageData.text.slice(0, 8000)}`;
   }
 
   const apiKey = await getApiKey();
   if (!apiKey) {
     throw new Error('API-ключ не указан. Введите свой ключ в настройках расширения.');
   }
-
-  const prompt = `Создай краткое содержание для следующей веб-страницы:\nЗаголовок: ${pageData.title || 'Без заголовка'}\nURL: ${pageData.url || 'Нет URL'}\nОписание: ${pageData.description || 'Нет описания'}\n\nСодержание:\n${pageData.text.slice(0, 8000)}`;
 
   const response = await fetch(CONFIG.OPENAI_API_BASE_URL + '/chat/completions', {
     method: 'POST',
@@ -166,7 +218,7 @@ async function generateSummary(requestData) {
       messages: [
         {
           role: "system",
-          content: detailConfig.systemPrompt
+          content: systemPrompt
         },
         {
           role: "user",
