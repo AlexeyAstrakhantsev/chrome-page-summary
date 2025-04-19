@@ -7,12 +7,10 @@
     "activeTab",
     "scripting",
     "tabs",
-    "storage"
+    "storage",
+    "identity"
   ],
-  "host_permissions": [
-    "https://openrouter.ai/*",
-    "<all_urls>"
-  ],
+
   "background": {
     "service_worker": "background.js"
   },
@@ -28,5 +26,13 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
+  },
+  "oauth2": {
+    "client_id": "97387329038-og9qqv9ohtigddf59ilboohiu0a1jr32.apps.googleusercontent.com",
+    "scopes": [
+      "openid",
+      "email",
+      "profile"
+    ]
   }
 }

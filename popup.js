@@ -1,4 +1,50 @@
 document.addEventListener('DOMContentLoaded', async function() {
+  // Google OAuth кнопка
+  const googleAuthBtn = document.getElementById('googleAuthBtn');
+  const googleAuthStatus = document.getElementById('googleAuthStatus');
+
+  function setGoogleAuthStatus(text, statusClass) {
+    googleAuthStatus.textContent = text;
+    googleAuthStatus.className = 'google-auth-status' + (statusClass ? ' ' + statusClass : '');
+  }
+
+  // Проверка статуса при загрузке (попытка получить токен без interactive)
+  if (googleAuthStatus && chrome.identity) {
+    chrome.identity.getAuthToken({ interactive: false }, function(token) {
+      if (token) {
+        setGoogleAuthStatus('Авторизация через Google: успешно', 'success');
+      } else {
+        setGoogleAuthStatus('Авторизация через Google: не выполнена', 'unknown');
+      }
+    });
+  }
+
+  if (googleAuthBtn && chrome.identity) {
+    googleAuthBtn.addEventListener('click', async () => {
+      googleAuthBtn.disabled = true;
+      googleAuthBtn.textContent = 'Авторизация...';
+      chrome.identity.getAuthToken({ interactive: true }, function(token) {
+        if (chrome.runtime.lastError) {
+          googleAuthBtn.textContent = 'Ошибка авторизации';
+          setGoogleAuthStatus('Ошибка авторизации', 'error');
+          setTimeout(() => { googleAuthBtn.textContent = 'Войти через Google'; googleAuthBtn.disabled = false; }, 2000);
+          console.warn('Google OAuth error:', chrome.runtime.lastError.message);
+          return;
+        }
+        if (token) {
+          googleAuthBtn.textContent = 'Успешно!';
+          setGoogleAuthStatus('Авторизация через Google: успешно', 'success');
+          setTimeout(() => { googleAuthBtn.textContent = 'Войти через Google'; googleAuthBtn.disabled = false; }, 2000);
+          console.log('Google OAuth token:', token);
+          // Здесь можно отправить токен на сервер для проверки и получить email/ID
+        } else {
+          googleAuthBtn.textContent = 'Ошибка';
+          setGoogleAuthStatus('Ошибка авторизации', 'error');
+          setTimeout(() => { googleAuthBtn.textContent = 'Войти через Google'; googleAuthBtn.disabled = false; }, 2000);
+        }
+      });
+    });
+  }
   window.progressBar = document.getElementById('progressBar');
   window.progressInner = document.getElementById('progressInner');
   window.currentProgress = 0;
@@ -99,9 +145,11 @@ document.addEventListener('DOMContentLoaded', async function() {
 
       if (response && response.status === 'completed') {
         summaryDiv.innerHTML = response.summary;
+        showPlaceholder(false);
       } else if (response && response.status === 'processing') {
         startLoadingState();
         updateStatus('Генерируем краткое содержание...');
+        showPlaceholder(false); // Не показываем placeholder при генерации
         listenForCompletion(tab.id);
       } else if (response && response.status === 'error') {
         const errorText = response.error || '';
@@ -144,10 +192,10 @@ document.addEventListener('DOMContentLoaded', async function() {
     hasTriedGenerate = true;
     showPlaceholder(false); // скрываем placeholder мгновенно при клике
     try {
-      // Не скрываем placeholder здесь, это будет сделано автоматически через updateSummaryUI()
       summaryDiv.innerHTML = ''; // очищаем только при генерации нового саммари
       startLoadingState();
       updateStatus('Анализируем содержимое...');
+      // placeholder не показываем вообще при генерации
       
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab) {
@@ -357,12 +405,14 @@ document.addEventListener('DOMContentLoaded', async function() {
   });
 
   function updateSummaryUI() {
-    const hasSummary = summaryDiv.innerText.trim().length > 0;
-    showCopyButton(hasSummary);
-    showSummaryBlock(hasSummary);
-    // Показываем placeholder только если пользователь ещё не пытался сгенерировать summary
-    showPlaceholder(!hasSummary && !hasTriedGenerate);
-  }
+  // Показываем или скрываем блоки в зависимости от наличия summary
+  const hasSummary = summaryDiv.innerText.trim().length > 0;
+  // Если идет генерация (progressBar видим), placeholder не показываем
+  const isProcessing = window.progressBar && window.progressBar.style.display !== 'none';
+  showCopyButton(hasSummary);
+  showSummaryBlock(hasSummary);
+  showPlaceholder(!hasSummary && !isProcessing);
+}
 
   // --- Удаляем переопределение innerHTML ---
   // Вместо этого используем MutationObserver для автоматического вызова updateSummaryUI

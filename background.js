@@ -74,7 +74,7 @@ chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
     chrome.tabs.create({ url: 'https://summary-page.online/welcome' }); // <-- замените на ваш URL с инструкцией
   } else if (details.reason === 'update') {
-    chrome.tabs.create({ url: 'https://summary-page.online/whatsnew' }); // <-- замените на страницу с новинками/изменениями
+    chrome.tabs.create({ url: 'https://summary-page.online/whats-new' }); // <-- замените на страницу с новинками/изменениями
   }
 });
 
