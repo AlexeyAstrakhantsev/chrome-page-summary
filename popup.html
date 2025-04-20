@@ -417,15 +417,12 @@
         <label for="modelSelect">AI Model:</label>
         <select id="modelSelect" title="Выберите модель ИИ"></select>
       </div>
-      <div class="api-key-field" style="margin-bottom: 10px;">
-        <label for="apiKeyInput" style="display:block;margin-bottom:4px;">API-ключ OpenRouter:</label>
-        <input type="password" id="apiKeyInput" placeholder="sk-..." style="width:100%;padding:8px;border-radius:6px;border:1px solid var(--border);font-size:14px;" title="Ваш персональный OpenRouter API-ключ" autocomplete="off" />
-        <span id="apiKeySaved" style="color:#388e3c;font-size:12px;display:none;">Сохранено!</span>
-      </div>
+
       <button class="google-auth-btn" id="googleAuthBtn" type="button">
         <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" style="height:18px;vertical-align:middle;margin-right:8px;">
         Войти через Google
       </button>
+      <button id="googleLogoutBtn" class="google-auth-btn">Выйти из аккаунта Google</button>
       <div id="googleAuthStatus" class="google-auth-status"></div>
       <div class="detail-buttons">
         <button class="detail-button active" data-level="brief" title="Краткое саммари (1-2 абзаца)">Кратко</button>
@@ -435,6 +432,8 @@
     </div>
 
     <button id="summarizeBtn" title="Сгенерировать краткое содержание">Создать краткое содержание</button>
+    <div id="limitsInfo" style="margin:8px 0 0 0;font-size:13px;color:#666;text-align:center;"></div>
+    <div id="limitsInfo" style="margin:8px 0 0 0;font-size:13px;color:#666;text-align:center;"></div>
     
     <div class="loading" id="loading">
       <div class="loading-animation"></div>

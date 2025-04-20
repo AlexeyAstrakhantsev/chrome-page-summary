@@ -45,6 +45,31 @@ document.addEventListener('DOMContentLoaded', async function() {
       });
     });
   }
+  const googleLogoutBtn = document.getElementById('googleLogoutBtn');
+  if (googleLogoutBtn && chrome.identity) {
+    googleLogoutBtn.addEventListener('click', () => {
+      googleLogoutBtn.disabled = true;
+      googleLogoutBtn.textContent = 'Выход...';
+      chrome.identity.getAuthToken({ interactive: false }, function(token) {
+        if (token) {
+          chrome.identity.removeCachedAuthToken({ token }, function() {
+            setGoogleAuthStatus('Авторизация через Google: не выполнена', 'unknown');
+            googleLogoutBtn.textContent = 'Выйти из аккаунта Google';
+            googleLogoutBtn.disabled = false;
+            googleAuthBtn.disabled = false;
+            googleAuthBtn.textContent = 'Войти через Google';
+          });
+        } else {
+          setGoogleAuthStatus('Авторизация через Google: не выполнена', 'unknown');
+          googleLogoutBtn.textContent = 'Выйти из аккаунта Google';
+          setTimeout(() => { googleLogoutBtn.disabled = false; }, 2000);
+          googleAuthBtn.disabled = false;
+          googleAuthBtn.textContent = 'Войти через Google';
+        }
+      });
+    });
+  }
+
   window.progressBar = document.getElementById('progressBar');
   window.progressInner = document.getElementById('progressInner');
   window.currentProgress = 0;
@@ -63,8 +88,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   const summaryActions = document.getElementById('summaryActions');
   const copiedLabel = document.getElementById('copiedLabel');
   const placeholderSummary = document.getElementById('placeholderSummary');
-  const apiKeyInput = document.getElementById('apiKeyInput');
-  const apiKeySaved = document.getElementById('apiKeySaved');
+  const limitsInfo = document.getElementById('limitsInfo');
 
   let selectedDetailLevel = 'brief';
 
@@ -144,7 +168,13 @@ document.addEventListener('DOMContentLoaded', async function() {
       }
 
       if (response && response.status === 'completed') {
-        summaryDiv.innerHTML = response.summary;
+        summaryDiv.innerHTML = typeof response.summary === 'string' ? response.summary : (response.summary && response.summary.summary ? response.summary.summary : '[Ошибка: некорректный формат ответа]');
+        // Показываем лимиты
+        if (typeof response.requestsMade === 'number' && typeof response.requestsLimit === 'number') {
+          limitsInfo.innerHTML = `Лимит: <b>${response.requestsMade}</b> из <b>${response.requestsLimit}</b> использовано`;
+        } else {
+          limitsInfo.innerHTML = '';
+        }
         showPlaceholder(false);
       } else if (response && response.status === 'processing') {
         startLoadingState();
@@ -153,12 +183,14 @@ document.addEventListener('DOMContentLoaded', async function() {
         listenForCompletion(tab.id);
       } else if (response && response.status === 'error') {
         const errorText = response.error || '';
-        if (errorText.includes('Rate limit exceeded: free-models-per-day')) {
-          const rateLimitHtml = '<div style="color:#b71c1c;font-weight:bold;line-height:1.4;padding:4px 0 0 0;">Лимит бесплатных запросов OpenRouter исчерпан.<br>Пополните баланс на <a href="https://openrouter.ai/credits" target="_blank" style="color:#1565c0;">openrouter.ai/credits</a> или попробуйте позже.</div>';
-          summaryDiv.innerHTML = rateLimitHtml;
-          return;
+        let errorHtml = 'Ошибка при генерации краткого содержания: ' + errorText;
+        summaryDiv.innerHTML = errorHtml;
+        // Показываем лимиты даже при ошибке
+        if (typeof response.requestsMade === 'number' && typeof response.requestsLimit === 'number') {
+          limitsInfo.innerHTML = `Лимит: <b>${response.requestsMade}</b> из <b>${response.requestsLimit}</b> использовано`;
+        } else {
+          limitsInfo.innerHTML = '';
         }
-        summaryDiv.innerHTML = 'Ошибка при генерации краткого содержания: ' + errorText;
       }
     }
   });
@@ -168,7 +200,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     chrome.runtime.onMessage.addListener(function messageHandler(message) {
       if (message.action === 'summaryComplete' && message.tabId === tabId) {
         stopLoadingState();
-        summaryDiv.innerHTML = message.summary;
+        summaryDiv.innerHTML = typeof message.summary === 'string' ? message.summary : (message.summary && message.summary.summary ? message.summary.summary : '[Ошибка: некорректный формат ответа]');
         updateSummaryUI();
         chrome.runtime.onMessage.removeListener(messageHandler);
       } else if (message.action === 'summaryError' && message.tabId === tabId) {
@@ -193,6 +225,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     showPlaceholder(false); // скрываем placeholder мгновенно при клике
     try {
       summaryDiv.innerHTML = ''; // очищаем только при генерации нового саммари
+      if (limitsInfo) limitsInfo.innerHTML = '';
       startLoadingState();
       updateStatus('Анализируем содержимое...');
       // placeholder не показываем вообще при генерации
@@ -248,7 +281,57 @@ document.addEventListener('DOMContentLoaded', async function() {
       const pageData = results[0].result;
       // Сохраняем pageData глобально для перефразирования
       window._lastPageData = pageData;
-      // Send message to background script to start generation
+      // Получаем Google OAuth токен перед генерацией
+      updateStatus('Получаем токен Google...');
+      // Получаем id_token Google через launchWebAuthFlow
+      async function getGoogleIdToken(clientId) {
+        return new Promise((resolve, reject) => {
+          const redirectUri = chrome.identity.getRedirectURL();
+          const url =
+            'https://accounts.google.com/o/oauth2/v2/auth' +
+            '?client_id=' + encodeURIComponent(clientId) +
+            '&response_type=id_token' +
+            '&redirect_uri=' + encodeURIComponent(redirectUri) +
+            '&scope=openid%20email%20profile' +
+            '&nonce=' + Math.random().toString(36).substring(2);
+
+          chrome.identity.launchWebAuthFlow(
+            { url, interactive: true },
+            (redirectUrl) => {
+              if (chrome.runtime.lastError || !redirectUrl) {
+                resolve(null);
+                return;
+              }
+              const m = redirectUrl.match(/[&#]id_token=([^&]+)/);
+              if (m && m[1]) {
+                resolve(m[1]);
+              } else {
+                resolve(null);
+              }
+            }
+          );
+        });
+      }
+
+      let userToken = null;
+      let userId = null;
+      const clientId = "97387329038-0ebnm49lsbrun3m9l8r2vpbhfv0m2lo4.apps.googleusercontent.com";
+      try {
+        userToken = await getGoogleIdToken(clientId);
+      } catch (authErr) {
+        userToken = null;
+      }
+      // Если токен не получен — гость, генерируем userId (UUID) и сохраняем в localStorage
+      if (!userToken) {
+        userId = localStorage.getItem('summary_guest_userId');
+        if (!userId) {
+          userId = ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+            ((c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & 15)) >> (c / 4)).toString(16)
+          );
+          localStorage.setItem('summary_guest_userId', userId);
+        }
+      }
+      // Отправляем запрос на генерацию
       updateStatus('Генерируем краткое содержание...');
       let response;
       try {
@@ -258,17 +341,12 @@ document.addEventListener('DOMContentLoaded', async function() {
           data: {
             pageData,
             selectedModel: modelSelect.value,
-            detailLevel: selectedDetailLevel
+            detailLevel: selectedDetailLevel,
+            ...(userToken ? { userToken } : { userId })
           }
         });
       } catch (err) {
         const errorText = err.message || '';
-        if (errorText.includes('Rate limit exceeded: free-models-per-day')) {
-          const rateLimitHtml = '<div style="color:#b71c1c;font-weight:bold;line-height:1.4;padding:4px 0 0 0;">Лимит бесплатных запросов OpenRouter исчерпан.<br>Пополните баланс на <a href="https://openrouter.ai/credits" target="_blank" style="color:#1565c0;">openrouter.ai/credits</a> или попробуйте позже.</div>';
-          summaryDiv.innerHTML = rateLimitHtml;
-          stopLoadingState();
-          return;
-        }
         summaryDiv.innerHTML = 'Ошибка: не удалось связаться с сервисом (background.js). Перезагрузите расширение.';
         stopLoadingState();
         return;
@@ -285,17 +363,18 @@ document.addEventListener('DOMContentLoaded', async function() {
       if (errorText.includes('Rate limit exceeded: free-models-per-day')) {
         const rateLimitHtml = '<div style="color:#b71c1c;font-weight:bold;line-height:1.4;padding:4px 0 0 0;">Лимит бесплатных запросов OpenRouter исчерпан.<br>Пополните баланс на <a href="https://openrouter.ai/credits" target="_blank" style="color:#1565c0;">openrouter.ai/credits</a> или попробуйте позже.</div>';
         summaryDiv.innerHTML = rateLimitHtml;
+        if (limitsInfo) limitsInfo.innerHTML = '';
         stopLoadingState();
         return;
       }
       summaryDiv.innerHTML = 'Ошибка при генерации краткого содержания: ' + errorText;
+      if (limitsInfo) limitsInfo.innerHTML = '';
       stopLoadingState();
     }
   });
 
   function startLoadingState() {
     if (summaryActions) summaryActions.style.display = 'none';
-    // Показываем и анимируем прогресс-бар
     if (window.progressBar && window.progressInner) {
       window.currentProgress = 0;
       window.progressInner.style.width = '0%';
@@ -309,10 +388,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
       }, 120);
     }
-
     summarizeBtn.disabled = true;
     loadingDiv.style.display = 'block';
-
     settingsPanel.classList.add('hidden');
     settingsToggle.disabled = true;
     settingsToggle.querySelector('.material-icons').textContent = 'settings';
@@ -423,24 +500,6 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   updateSummaryUI();
 
-  // --- API KEY UI ---
-  chrome.storage.local.get(['OPENAI_API_KEY'], ({ OPENAI_API_KEY }) => {
-    console.log('OPENAI_API_KEY из storage:', OPENAI_API_KEY);
-    if (!OPENAI_API_KEY) {
-      if (apiKeyInput) {
-        apiKeyInput.focus();
-        apiKeyInput.placeholder = 'Введите ваш API-ключ';
-      }
-      updateStatus('API-ключ не указан. Введите свой ключ в настройках расширения.');
-    }
-  });
-
-  apiKeyInput.addEventListener('input', () => {
-    chrome.storage.local.set({ OPENAI_API_KEY: apiKeyInput.value }, () => {
-      apiKeySaved.style.display = 'inline';
-      setTimeout(() => { apiKeySaved.style.display = 'none'; }, 1200);
-    });
-  });
 
   // Save settings to storage
   function saveSettings() {

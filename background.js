@@ -1,69 +1,21 @@
 // --- CONFIG (скопировано из config.js, чтобы popup.js получал правильные надписи) ---
 const CONFIG = {
-  OPENAI_API_BASE_URL: "https://openrouter.ai/api/v1",
   TITLE: "Summary Page",
   DESCRIPTION: "Генерируйте краткое содержание любой страницы с помощью ИИ.",
   PLACEHOLDER_TEXT: "Нажмите кнопку для создания краткого содержания",
+  // Модели и уровни детализации можно оставить для UI, если нужно
   AVAILABLE_MODELS: [
-    {
-      id: "meta-llama/llama-4-maverick:free",
-      name: "Llama 4 Maverick",
-      prompt: "Сделай краткое структурированное саммари на русском языке."
-    },
-    {
-      id: "deepseek/deepseek-v3-base:free",
-      name: "DeepSeek V3 Base",
-      prompt: "Сделай подробное саммари на русском языке."
-    },
-    {
-      id: "google/gemini-2.5-pro-exp-03-25:free",
-      name: "Gemini 2.5 Pro",
-      prompt: "Сделай саммари для специалистов."
-    },
-    {
-      id: "qwen/qwen2.5-vl-32b-instruct:free",
-      name: "Qwen2.5 VL 32B",
-      prompt: "Сделай краткое саммари с ключевыми фактами."
-    }
+    { id: "llama-4", name: "Llama 4 Maverick" },
+    { id: "deepseek-v3", name: "DeepSeek V3 Base" },
+    { id: "gemini-2.5", name: "Gemini 2.5 Pro" },
+    { id: "qwen2.5-vl", name: "Qwen2.5 VL 32B" }
   ],
-  DETAIL_LEVELS: {
-    brief: {
-      systemPrompt: `Ты - опытный редактор, создающий краткие обзоры текста. 
-Твоя задача - создать лаконичное саммари на русском языке:
-1. Начни с 1-2 предложений, описывающих суть
-2. Выдели 2-3 ключевых момента
-3. Общий объем - 1-2 абзаца`
-    },
-    detailed: {
-      systemPrompt: `Ты - опытный редактор, специализирующийся на создании информативных обзоров текста. 
-Твоя задача - создать качественное саммари на русском языке:
-1. Отрази основные идеи и ключевые моменты
-2. Сохрани важные детали и цифры
-3. Используй четкую структуру
-4. Общий объем - 3-4 абзаца
-
-Формат:
-• Начни с 1-2 предложений о сути
-• Выдели 3-4 ключевых момента
-• Добавь важные цифры и факты`
-    },
-    'very-detailed': {
-      systemPrompt: `Ты - опытный аналитик, создающий подробные обзоры текста. 
-Твоя задача - создать детальное саммари на русском языке:
-1. Глубоко раскрой основные темы и идеи
-2. Сохрани все важные детали, цифры и факты
-3. Добавь контекст и связи между идеями
-4. Используй четкую структуру
-5. Общий объем - 5-6 абзацев
-
-Формат:
-• Начни с краткого обзора (2-3 предложения)
-• Подробно опиши 4-5 ключевых аспектов
-• Включи все важные данные и цитаты
-• Добавь выводы или заключение`
-    }
-  },
-  DEFAULT_MODEL: "meta-llama/llama-4-maverick:free"
+  DETAIL_LEVELS: [
+    { id: "brief", name: "Кратко" },
+    { id: "detailed", name: "Детально" },
+    { id: "very-detailed", name: "Очень подробно" }
+  ],
+  DEFAULT_MODEL: "llama-4"
 };
 
 // Store ongoing summaries
@@ -72,21 +24,12 @@ let activeSummaryRequests = new Map();
 // --- Открытие страницы после установки/обновления расширения ---
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
-    chrome.tabs.create({ url: 'https://summary-page.online/welcome' }); // <-- замените на ваш URL с инструкцией
+    chrome.tabs.create({ url: 'https://summary-page.online/welcome' });
   } else if (details.reason === 'update') {
-    chrome.tabs.create({ url: 'https://summary-page.online/whats-new' }); // <-- замените на страницу с новинками/изменениями
+    chrome.tabs.create({ url: 'https://summary-page.online/whats-new' });
   }
 });
 
-
-// --- Получение API-ключа из chrome.storage.local ---
-async function getApiKey() {
-  return new Promise(resolve => {
-    chrome.storage.local.get(['OPENAI_API_KEY'], ({ OPENAI_API_KEY }) => {
-      resolve(OPENAI_API_KEY || '');
-    });
-  });
-}
 
 // Handle messages from popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -191,7 +134,7 @@ async function generateSummary(requestData) {
   } else {
     // Генерация саммари: нужны pageData и detailLevel
     const detailLevel = requestData.detailLevel;
-    const detailConfig = CONFIG.DETAIL_LEVELS[detailLevel];
+    const detailConfig = CONFIG.DETAIL_LEVELS.find(lvl => lvl.id === detailLevel);
     if (!detailConfig) {
       throw new Error('Некорректный уровень детализации: ' + detailLevel);
     }
@@ -200,59 +143,54 @@ async function generateSummary(requestData) {
     prompt = `Создай краткое содержание для следующей веб-страницы:\nЗаголовок: ${pageData.title || 'Без заголовка'}\nURL: ${pageData.url || 'Нет URL'}\nОписание: ${pageData.description || 'Нет описания'}\n\nСодержание:\n${pageData.text.slice(0, 8000)}`;
   }
 
-  const apiKey = await getApiKey();
-  if (!apiKey) {
-    throw new Error('API-ключ не указан. Введите свой ключ в настройках расширения.');
+  // Теперь API принимает text, model, detailLevel, token/userId
+  let body = {
+    text: prompt,
+    model: requestData.selectedModel,
+    detailLevel: requestData.detailLevel
+  };
+  if (requestData.userToken) {
+    body.token = requestData.userToken;
+  } else if (requestData.userId) {
+    body.userId = requestData.userId;
   }
 
-  const response = await fetch(CONFIG.OPENAI_API_BASE_URL + '/chat/completions', {
+  const response = await fetch('https://summary-page.online/api/generate-summary', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`,
       'HTTP-Referer': chrome.runtime.getURL('/'),
       'X-Title': 'Chrome Summary Extension'
     },
-    body: JSON.stringify({
-      model: selectedModel,
-      messages: [
-        {
-          role: "system",
-          content: systemPrompt
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      temperature: 0.7
-    })
+    body: JSON.stringify(body)
   });
 
   let responseData;
   try {
     responseData = await response.json();
   } catch (e) {
-    console.error('Ошибка парсинга JSON от OpenRouter:', e);
-    throw new Error('Ошибка парсинга ответа от OpenRouter');
+    console.error('Ошибка парсинга JSON:', e);
+    throw new Error('Ошибка парсинга ответа');
   }
 
   // Логируем полный ответ для отладки
-  console.log('OpenRouter API raw response:', responseData);
+  console.log('API raw response:', responseData);
 
-  if (responseData.error) {
+  if (response.status === 429) {
+    throw new Error('Лимит запросов исчерпан');
+  } else if (response.status === 401) {
+    throw new Error('Ошибка авторизации');
+  } else if (responseData.error) {
     throw new Error(responseData.error.message || JSON.stringify(responseData.error));
   }
 
   // Попытка найти текст саммари в разных форматах
-  if (responseData.choices && responseData.choices[0] && responseData.choices[0].message) {
-    return responseData.choices[0].message.content;
-  }
-  if (responseData.choices && responseData.choices[0] && responseData.choices[0].text) {
-    return responseData.choices[0].text;
-  }
-  if (responseData.message) {
-    return responseData.message;
+  if (responseData.summary) {
+    return {
+      summary: responseData.summary,
+      requestsMade: responseData.requestsMade,
+      requestsLimit: responseData.requestsLimit
+    };
   }
 
   throw new Error('Некорректный формат ответа API: ' + JSON.stringify(responseData));
